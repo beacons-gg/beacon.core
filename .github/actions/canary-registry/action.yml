@@ -1,0 +1,87 @@
+# The install check's throwaway registry: a Verdaccio on this runner, for this job only. The
+# canary is published here and installed from here, so no canary ever reaches a real registry.
+# scripts/canary-registry.mjs writes its config and says what it holds.
+#
+# Points npm and pnpm at a user config of this job's own ($RUNNER_TEMP/npmrc, through
+# NPM_CONFIG_USERCONFIG for the rest of the job) and leaves there a token for the throwaway
+# registry and nothing else. A token for a real registry that another workflow wrote to a runner's
+# ~/.npmrc is therefore never read in this job. Storage is $RUNNER_TEMP/canary-registry/storage: a
+# job that restores a copy there before this action runs serves what an earlier job published.
+#
+# Needs the repository checked out and node set up (setup-workspace).
+name: Canary registry
+description: Start a throwaway npm registry on this runner for the install check
+
+inputs:
+  url:
+    description: The address to serve on, such as http://127.0.0.1:4873/
+    required: true
+  upstream:
+    description: >-
+      The real registry every other @beaconsgg/* package comes through from: the private
+      registry today, https://registry.npmjs.org/ once the packages are public.
+    required: true
+  upstream-token:
+    description: >-
+      A token for reading the upstream, when it needs one. Only the registry's own process gets
+      the token, in its environment. No step writes the token to a file.
+    default: ""
+  upstream-token-required:
+    description: >-
+      'true' fails the step on an empty upstream-token, rather than failing later with a 404 for
+      a package the upstream would not show without the token.
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Start the throwaway registry
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+        UPSTREAM_REGISTRY: ${{ inputs.upstream }}
+        UPSTREAM_TOKEN: ${{ inputs.upstream-token }}
+        TOKEN_REQUIRED: ${{ inputs.upstream-token-required }}
+        # A version at least two weeks old, pinned so a run never takes a new release.
+        VERDACCIO: verdaccio@6.11.1
+      run: |
+        if [ "$TOKEN_REQUIRED" = "true" ] && [ -z "$UPSTREAM_TOKEN" ]; then
+          echo "::error::upstream-token is empty: pass secrets.NPM_TOKEN to canary-registry"
+          exit 1
+        fi
+        # Another registry on this address would take this job's publish or serve its install.
+        if curl -sf "${URL}-/ping" >/dev/null; then
+          echo "::error::$URL already answers: another registry is running on this runner"
+          exit 1
+        fi
+        dir="$RUNNER_TEMP/canary-registry"
+        userconfig="$RUNNER_TEMP/npmrc"
+        node scripts/canary-registry.mjs "$dir"
+        listen="${URL#http://}"
+        listen="${listen%/}"
+        # From the registry's own directory, so npx reads no project .npmrc. Only npx goes to the
+        # background, with every stream redirected: a backgrounded list such as `cd && npx` waits
+        # in a subshell that keeps the step's output open, and the step never ends.
+        cd "$dir"
+        nohup npx --yes "$VERDACCIO" --config config.yaml --listen "$listen" > verdaccio.log 2>&1 < /dev/null &
+        for _ in $(seq 1 90); do
+          if curl -sf "${URL}-/ping" >/dev/null; then break; fi
+          sleep 1
+        done
+        if ! curl -sf "${URL}-/ping" >/dev/null; then
+          echo "::error::the throwaway registry did not start"
+          cat verdaccio.log
+          exit 1
+        fi
+        # A user for this job's publish. The password is thrown away with the registry.
+        if ! token=$(curl -sf -X PUT -H 'content-type: application/json' \
+          -d "{\"name\":\"canary\",\"password\":\"$(openssl rand -hex 16)\"}" \
+          "${URL}-/user/org.couchdb.user:canary" | jq -r .token) ||
+          [ -z "$token" ] || [ "$token" = "null" ]; then
+          echo "::error::the throwaway registry gave no token"
+          cat verdaccio.log
+          exit 1
+        fi
+        printf '//%s/:_authToken=%s\n' "$listen" "$token" > "$userconfig"
+        echo "NPM_CONFIG_USERCONFIG=$userconfig" >> "$GITHUB_ENV"
+        echo "the throwaway registry is up at $URL"

@@ -1,0 +1,39 @@
+packages:
+  - "packages/*/*" # tiered: core/ client/ tooling/ (the tier is the directory; packages/README.md)
+
+# One version range per shared dependency; a manifest names it with "catalog:". A published
+# package's `catalog:` range is rewritten to the range here on the way out.
+catalog:
+  # What the seven are built on
+  zod: ^4.6.7
+  canonicalize: ^2.0.0
+  "@noble/ed25519": ^2.1.0
+  "@noble/hashes": ^1.6.0
+  "@scure/base": ^1.2.0
+  "@scure/bip39": ^1.5.0
+  json-logic-js: ^2.0.5
+  "@types/json-logic-js": ^2.0.7
+  ngeohash: ^0.6.3
+  "@types/ngeohash": ^0.6.8
+  ulid: ^2.3.0
+  "@types/node": ^22.10.0
+  # Toolchain
+  typescript: ^5.7.3
+  vitest: ^2.1.8
+  "@vitest/coverage-v8": ^2.1.8
+  eslint: ^9.18.0
+  "@eslint/js": ^9.18.0
+  typescript-eslint: ^8.20.0
+  eslint-config-prettier: ^9.1.0
+  prettier: ^3.4.2
+  turbo: ^2.3.3
+  yaml: ^2.9.0 # @beaconsgg/eslint-config reads this file's workspace globs
+
+# Install settings. These lived under the "pnpm" field of the root package.json until
+# pnpm stopped reading it (10.33+); pnpm-workspace.yaml is their new home. Note that
+# `pnpm add`/`pnpm update` rewrite this file and sort its keys — if these blocks come
+# back reordered, that is pnpm, not a hand edit. See https://pnpm.io/settings.
+
+# Native deps allowed to run their install scripts.
+onlyBuiltDependencies:
+  - esbuild

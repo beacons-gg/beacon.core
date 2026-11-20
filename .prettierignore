@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+pnpm-lock.yaml
+
+# Package READMEs are hand-authored prose; Prettier does not reflow them.
+packages/*/*/README.md

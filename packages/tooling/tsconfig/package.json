@@ -1,0 +1,28 @@
+{
+  "name": "@beaconsgg/tsconfig",
+  "version": "1.1.2",
+  "description": "The compiler options every Beacon workspace builds with: strictness, target and module format.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beacons-gg/beacon.core.git",
+    "directory": "packages/tooling/tsconfig"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./base.json": "./base.json",
+    "./client.json": "./client.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "base.json",
+    "client.json",
+    "LICENSE",
+    "NOTICE"
+  ]
+}

@@ -1,0 +1,12 @@
+# Keeps the workflow actions current (checkout, setup-node, pnpm: the supply chain of CI itself).
+# Not enabled for npm: the dependency ranges are the catalog's (pnpm-workspace.yaml), and a bump of
+# one is a change to what the published packages ask of their consumers, so it is made on purpose.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # The workflows, and the composite action they share, which holds most of the action versions.
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: monthly

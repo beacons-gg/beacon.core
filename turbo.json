@@ -1,0 +1,28 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "//": "The shared configs are workspace packages (@beaconsgg/tsconfig, @beaconsgg/vitest-config), devDependencies of every workspace that uses them, so turbo hashes them through the dependency graph: a changed compiler flag or coverage floor invalidates every task downstream. @beaconsgg/vitest-config#build names its inputs because nearly every task in the repo sits downstream of it: only what reaches its dist counts, so an edit to its README, its tests or its check script reruns that package alone. @beaconsgg/eslint-config#build does the same: the preset has no build script, but the entry is what a dependent's hash reads, so an edit to the preset's README or tests does not rerun a dependent's tasks. For the same reason the root manifest does not depend on it, and the gate runs its check by path: turbo counts every file of a package the ROOT depends on as a global input.",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@beaconsgg/eslint-config#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "!src/**/__tests__/**", "package.json"]
+    },
+    "@beaconsgg/vitest-config#build": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "!src/**/__tests__/**", "tsconfig*.json", "package.json"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "test:coverage": {
+      "dependsOn": ["^build"]
+    }
+  }
+}

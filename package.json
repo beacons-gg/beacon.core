@@ -1,0 +1,47 @@
+{
+  "name": "beacon-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Beacon's published packages: the seven core @beaconsgg/* packages (the wire contract, the primitives and the client SDK) and the tooling presets. The server is developed in beacon.server and the operator console in beacon.admin. Both build against what this repository publishes, as every game does.",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "beacon": {
+    "internalRefs": {
+      "publicOrg": "beacons-gg",
+      "publishedDocs": [
+        "beacon.server/doc/spec/admin-api.md",
+        "beacon.server/doc/spec/location-lookups.md",
+        "beacon.server/doc/spec/mailbox-and-media.md",
+        "beacon.server/doc/spec/place-proposals.md",
+        "beacon.server/doc/spec/places.md",
+        "beacon.server/doc/spec/room-operation.md",
+        "beacon.server/doc/spec/runtime-settings.md",
+        "beacon.server/apps/atlas/doc/spec/beacon-integration.md",
+        "beacon.server/apps/atlas/doc/spec/place-identity.md",
+        "beacon.server/apps/atlas/doc/spec/volume-format.md"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:refs": "node packages/tooling/eslint-config/scripts/check-internal-refs.mjs --strict --allow org-names",
+    "check:copy": "node packages/tooling/eslint-config/scripts/check-copy.mjs --strict 'doc/**/*.md' '**/README.md' CONTRIBUTING.md SECURITY.md",
+    "gate": "node packages/tooling/vitest-config/scripts/check-coverage-tasks.mjs && node packages/tooling/eslint-config/scripts/check-tier-gate.mjs && node scripts/check-doc-examples.mjs && node scripts/check-core-api.mjs && node scripts/check-manifests.mjs && pnpm run check:copy && pnpm run check:refs && turbo run build typecheck && turbo run test:coverage && pnpm run lint && pnpm run format:check"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "@beaconsgg/prettier-config": "workspace:*"
+  },
+  "prettier": "@beaconsgg/prettier-config"
+}

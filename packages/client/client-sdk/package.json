@@ -1,0 +1,51 @@
+{
+  "name": "@beaconsgg/client-sdk",
+  "version": "1.1.2",
+  "description": "[C] client-bound (RN-safe): the Beacon client SDK. Signed REST, platform reads, the live channel, descriptor verification, the approved-server registry and key custody, with fetch, the clock, the socket and the key store injected.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beacons-gg/beacon.core.git",
+    "directory": "packages/client/client-sdk"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@beaconsgg/geo": "workspace:*",
+    "@beaconsgg/identity": "workspace:*",
+    "@beaconsgg/protocol-types": "workspace:*",
+    "@beaconsgg/scout-interp": "workspace:*",
+    "ulid": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "vitest": "catalog:",
+    "@beaconsgg/tsconfig": "workspace:*",
+    "@beaconsgg/vitest-config": "workspace:*"
+  }
+}

@@ -1,0 +1,359 @@
+# Install check: a PR that changes something this repository publishes proves the packages AS A
+# CONSUMER INSTALLS THEM, not only as workspace copies.
+#
+# CI (ci.yml) runs every suite over the workspace. What the workspace cannot show is the published
+# artifact: `files`, the exports maps, the `workspace:*` and `catalog:` ranges rewritten on the way
+# out, the peers, a preset resolved from node_modules by name. So this run:
+#
+#   1. starts a THROWAWAY registry inside the job (Verdaccio on 127.0.0.1, see
+#      .github/actions/canary-registry and scripts/canary-registry.mjs) and publishes a throwaway
+#      build of all eleven packages to it, versioned `0.0.0-canary.g<sha>.<attempt>` under the
+#      `canary` dist-tag (a canary is a build that exists only to be tried first). The registry
+#      holds the eleven names and nothing else, and it goes away with the job, so no canary ever
+#      reaches a real registry. Every other `@beaconsgg/*` package comes through it from
+#      UPSTREAM_REGISTRY below, and everything outside the scope comes from npmjs;
+#   2. writes a small project outside the workspace (scripts/canary-consumer.mjs), installs that
+#      build into it from the throwaway registry, and uses each package the way a consumer does:
+#      every entry point loads, a file typechecks and its test runs under the tsconfig and vitest
+#      presets, the lint and format presets resolve by name, and the presets' checks run from their
+#      bins;
+#   3. starts the throwaway registry again over the canary the first job published (its storage,
+#      passed on as an artifact), installs the five-flow client driver the server's repository
+#      publishes (@beaconsgg/flows, through the registry from upstream) with the seven forced to the
+#      throwaway build (scripts/canary-driver.mjs), and runs the flows
+#      against the server AS RELEASED, the `beacon-server:latest` image from GitHub Container
+#      Registry: an app built on this change, meeting the server operators already run. That is the
+#      one cell of the skew window (doc/core-compatibility.md §6) the server's repository cannot
+#      run.
+#
+# The workflow runs on every pull request, so its result is always there to require. A `changes`
+# job decides whether the PR touches anything published (PUBLISHED_PATHS below), and `install` and
+# `flows` run only when it does. The `Install check summary` job is the required check: it passes
+# when every job that ran passed, including when `install` and `flows` were skipped because nothing
+# published changed, and fails when any of them failed. A path filter on the trigger would leave a
+# required check waiting forever on a PR it skipped.
+#
+# Nothing is left to clean up: each registry ends with its job, and the artifact expires after three
+# days (re-running `flows` later than that needs a re-run of `install` too). What the run proved is
+# in its log.
+#
+# The server (beacon.server), the console (beacon.admin) and each game run their own CI over
+# what is released; whether they still build over a new core is learned from a release, there,
+# before the next one depends on it (doc/release-runbook.md).
+#
+# Every npm config a job reads names the throwaway registry for the scope and holds a token for it
+# alone, so a publish that went anywhere else would be refused. Step 3 reads
+# @beaconsgg/flows from public npm and pulls the public server image, so it needs no secret.
+name: Install check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: canary-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  # The throwaway registry, on the runner itself. Every publish here goes to this address.
+  CANARY_REGISTRY: http://127.0.0.1:4873/
+  # The real registry the `@beaconsgg` scope is installed from, which the throwaway registry reads
+  # through for every package it doesn't hold.
+  UPSTREAM_REGISTRY: https://registry.npmjs.org/
+  # Everything this repo publishes, as filters for turbo and pnpm. Used unquoted, so each filter is
+  # its own word; bash leaves the `*` alone, since no path matches the whole word.
+  PUBLISHED: >-
+    --filter=./packages/core/* --filter=./packages/client/* --filter=./packages/tooling/*
+  # The paths whose change runs the check, one extended regular expression per line: everything
+  # published; pnpm-workspace.yaml, which sets what the published `catalog:` ranges are rewritten to
+  # and what the consumer's peers are; and the check's own scripts, workflow and actions.
+  PUBLISHED_PATHS: |-
+    ^packages/(core|client|tooling)/
+    ^pnpm-workspace\.yaml$
+    ^scripts/canary-(consumer|driver|registry)\.mjs$
+    ^\.github/workflows/install-check\.yml$
+    ^\.github/actions/(setup-workspace|canary-registry)/action\.yml$
+
+jobs:
+  # Whether the PR changes anything in PUBLISHED_PATHS. Skipped on a draft, like everything here.
+  changes:
+    if: github.event.pull_request.draft == false
+    runs-on: ${{ fromJSON(vars.BEACON_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      published: ${{ steps.files.outputs.published }}
+    steps:
+      - id: files
+        name: List the PR's files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          matched=$(grep -E -f <(printf '%s\n' "$PUBLISHED_PATHS") <<< "$files" || true)
+          if [ -n "$matched" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "changes something published:"; echo "$matched"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "changes nothing published, so install and flows are skipped"
+          fi
+
+  install:
+    # A Dependabot PR's run gets Dependabot's secrets, which hold no registry token unless it is
+    # added there too, so its `flows` job cannot read the driver, and its `uses:` bumps touch this
+    # file and the setup actions. Skipped rather than red: such a PR changes nothing that is
+    # published.
+    needs: changes
+    if: needs.changes.outputs.published == 'true' && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ${{ fromJSON(vars.BEACON_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.name.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # No npm token: an install here fetches nothing from a registry, and this job publishes only
+      # to the throwaway one.
+      - uses: ./.github/actions/setup-workspace
+        with:
+          npm-login: "false"
+
+      - uses: ./.github/actions/canary-registry
+        with:
+          url: ${{ env.CANARY_REGISTRY }}
+          upstream: ${{ env.UPSTREAM_REGISTRY }}
+
+      - id: name
+        name: Name the build
+        run: |
+          sha="${{ github.event.pull_request.head.sha }}"
+          # The `g` keeps the identifier alphanumeric. A short sha made of digits with a leading
+          # zero (0628279) is a numeric identifier semver forbids, and the registry dropped the
+          # zero on publish while every step here kept grepping for it, so the lockfile check failed
+          # on a canary that was in fact installed.
+          version="0.0.0-canary.g${sha:0:7}.${{ github.run_attempt }}"
+          echo "CANARY_VERSION=$version" >> "$GITHUB_ENV"
+          echo "CONSUMER=$RUNNER_TEMP/consumer" >> "$GITHUB_ENV"
+          pnpm $PUBLISHED ls --depth -1 --json > "$RUNNER_TEMP/published.json"
+          names=$(jq -r '.[].name' "$RUNNER_TEMP/published.json" | sort | tr '\n' ' ')
+          echo "PUBLISHED_NAMES=$names" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "canary $sha: $names"
+
+      # One version for everything published: the seven, and the presets, which a release versions
+      # on their own. A canary is one build of this commit, not a release. Both places that name
+      # the real registry for a publish name the throwaway one instead: the `@beaconsgg` scope
+      # mapping in .npmrc, which decides where a scoped package goes (`--registry` does not), and
+      # each manifest's publishConfig, so that neither is left pointing at a real registry.
+      - name: Version what is published, for the throwaway registry
+        run: |
+          sed -i "s#^@beaconsgg:registry=.*#@beaconsgg:registry=$CANARY_REGISTRY#" .npmrc
+          grep -qxF "@beaconsgg:registry=$CANARY_REGISTRY" .npmrc
+          for dir in $(jq -r '.[].path' "$RUNNER_TEMP/published.json"); do
+            m="$dir/package.json"
+            jq --arg v "$CANARY_VERSION" --arg r "$CANARY_REGISTRY" \
+              '.version = $v | .publishConfig.registry = $r' "$m" > "$m.tmp" && mv "$m.tmp" "$m"
+          done
+
+      - name: Build what is published
+        run: pnpm exec turbo run build $PUBLISHED
+
+      # pnpm's recursive publish rewrites workspace:* to the canary version and catalog: to the
+      # catalogued range, as the release publish does; this is not a release.
+      - name: Publish the canary to the throwaway registry
+        run: pnpm $PUBLISHED publish --tag canary --no-git-checks
+
+      # For the `flows` job, which starts its own throwaway registry over this storage.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: canary-registry
+          path: ${{ runner.temp }}/canary-registry/storage
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
+
+      # A repository of its own, outside this workspace: nothing in it can reach a workspace copy.
+      - name: Write the consumer
+        run: |
+          node scripts/canary-consumer.mjs "$CANARY_VERSION" "$CONSUMER" "$CANARY_REGISTRY"
+          cat "$CONSUMER/package.json"
+
+      - name: Install the copies from the throwaway registry
+        working-directory: ${{ env.CONSUMER }}
+        run: pnpm install
+
+      # The consumer names each at the canary, and nothing it installed brought another version of
+      # one in: a published package naming a sibling at a release range would.
+      - name: What is installed is the canary, and only the canary
+        working-directory: ${{ env.CONSUMER }}
+        run: |
+          for name in $PUBLISHED_NAMES; do
+            v=$(jq -r .version "node_modules/$name/package.json")
+            echo "$name $v"
+            [ "$v" = "$CANARY_VERSION" ] || { echo "::error::$name is $v, not the canary"; exit 1; }
+          done
+          other=$(grep -E "^  '?@beaconsgg/[a-z-]+@" pnpm-lock.yaml | grep -vF "@$CANARY_VERSION" || true)
+          if [ -n "$other" ]; then
+            echo "::error::the lockfile holds another version of a published package:"; echo "$other"; exit 1
+          fi
+
+      - name: Every entry point of every published package loads
+        working-directory: ${{ env.CONSUMER }}
+        run: node load.mjs
+
+      # The presets, as a repository that installs them uses them: by name, from node_modules.
+      - name: The tsconfig preset compiles a file that imports one of the seven
+        working-directory: ${{ env.CONSUMER }}
+        run: pnpm exec tsc -p tsconfig.json
+
+      - name: The vitest preset runs its test and holds the floor
+        working-directory: ${{ env.CONSUMER }}
+        run: pnpm exec vitest run --coverage
+
+      - name: The lint and format presets resolve by name
+        working-directory: ${{ env.CONSUMER }}
+        run: |
+          pnpm exec eslint src eslint.config.mjs
+          pnpm exec prettier --check src eslint.config.mjs package.json tsconfig.json
+
+      - name: The presets' checks run from their bins
+        working-directory: ${{ env.CONSUMER }}
+        run: |
+          pnpm exec beacon-check-coverage-tasks
+          pnpm exec beacon-check-tier-gate
+
+  flows:
+    # A client on the throwaway build, against the server as released (see the header).
+    needs: install
+    runs-on: ${{ fromJSON(vars.BEACON_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 15
+
+    # One server per database, and this job's is fresh, so the released server's migrations are the
+    # newest it has seen.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: beacon
+          POSTGRES_PASSWORD: beacon
+          POSTGRES_DB: beacon_canary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      CANARY_VERSION: ${{ needs.install.outputs.version }}
+      ORIGIN: http://127.0.0.1:3001
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # No npm token here either: the throwaway registry reads public npm.
+      - uses: ./.github/actions/setup-workspace
+        with:
+          npm-login: "false"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: canary-registry
+          path: ${{ runner.temp }}/canary-registry/storage
+
+      - uses: ./.github/actions/canary-registry
+        with:
+          url: ${{ env.CANARY_REGISTRY }}
+          upstream: ${{ env.UPSTREAM_REGISTRY }}
+
+      # The image every operator pulls. It says which release it is in its own environment
+      # (BEACON_VERSION, baked at build time), which goes in the summary: a red run is read
+      # against that release.
+      - name: Start the server as released
+        env:
+          IMAGE: ghcr.io/beacons-gg/beacon-server:latest
+        run: |
+          docker pull "$IMAGE"
+          released=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" | sed -n 's/^BEACON_VERSION=//p')
+          echo "RELEASED=${released:-unknown}" >> "$GITHUB_ENV"
+          echo "the server as released: ${released:-unknown}"
+          docker run -d --name server --network host \
+            -e PORT=3001 -e BEACON_HOST=127.0.0.1:3001 -e BEACON_PUBLIC_URL="$ORIGIN" \
+            -e BEACON_CORS_ORIGINS="" \
+            -e BEACON_DATABASE_URL=postgres://beacon:beacon@localhost:5432/beacon_canary \
+            "$IMAGE"
+          for _ in $(seq 1 120); do
+            if curl -sf "$ORIGIN/health/ready" >/dev/null; then echo "ready"; exit 0; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' server)" != "true" ]; then break; fi
+            sleep 0.5
+          done
+          echo "::error::the released server did not become ready"
+          docker logs --tail 60 server
+          exit 1
+
+      # Outside this workspace, so nothing in it can reach a workspace copy: the driver as
+      # published, with the seven overridden to the canary.
+      - name: Install the driver over the canary
+        run: |
+          dir="$RUNNER_TEMP/driver"
+          node scripts/canary-driver.mjs "$CANARY_VERSION" "$dir" "$CANARY_REGISTRY"
+          cat "$dir/package.json" "$dir/pnpm-workspace.yaml"
+          cd "$dir"
+          pnpm install
+          echo "driver: $(jq -r .version node_modules/@beaconsgg/flows/package.json)"
+          # The old `@beacon/` scope too: nothing overrides it any more, so a driver that still
+          # named it would run over a release instead of the canary.
+          other=$(grep -E "^  '?@beacon(sgg)?/[a-z-]+@" pnpm-lock.yaml | grep -vF "@$CANARY_VERSION" | grep -vF "@beaconsgg/flows@" || true)
+          if [ -n "$other" ]; then
+            echo "::error::the driver resolved a published package to something other than the canary:"; echo "$other"; exit 1
+          fi
+
+      # One line per flow, `ok` or `FAIL` with what happened; the driver exits 1 when any failed
+      # and 3 when it could not start.
+      - name: The five flows, a client on this build against the released server
+        working-directory: ${{ runner.temp }}/driver
+        run: |
+          set -o pipefail
+          BEACON_FLOWS_SERVER="$ORIGIN" pnpm exec beacon-flows 2>&1 | tee "$RUNNER_TEMP/flows.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### client $CANARY_VERSION x server ${RELEASED:-not started}"
+            echo '```'
+            grep -E '^(ok  |FAIL) ' "$RUNNER_TEMP/flows.txt" 2>/dev/null || echo "no flow reported: see the log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The server's log, when the run failed
+        if: failure()
+        run: docker logs --tail 80 server 2>&1 || true
+
+  # The required check (see the header). Fails when a job above failed or was cancelled. Skipped on
+  # a draft, where a skipped required check counts as passed and costs nothing, since a draft can't
+  # merge. Not run when the whole run is cancelled: the newer run that cancelled it reports instead.
+  summary:
+    name: Install check summary
+    needs: [changes, install, flows]
+    if: ${{ !cancelled() && github.event.pull_request.draft == false }}
+    runs-on: ${{ fromJSON(vars.BEACON_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    steps:
+      - name: Every job that ran passed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$RESULTS"
+          failed=$(jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")' <<< "$RESULTS")
+          if [ -n "$failed" ]; then echo "::error::did not pass: $failed"; exit 1; fi

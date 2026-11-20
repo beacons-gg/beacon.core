@@ -1,0 +1,56 @@
+# CI: the whole gate on every pull request marked ready.
+#
+# Minutes are spent with care: a draft pull request runs nothing, so work is pushed as a draft, the
+# gate is run locally (`pnpm run gate`), and the request is marked ready once, for one run. A push
+# to main runs nothing either: a merge lands what its pull request's run validated.
+#
+# This repository is the published packages: the seven core packages, and the tooling presets. It
+# runs everything every time. While the server, the console and the game lived here, PR runs were
+# scoped to the affected packages and the server-side jobs sat behind a sentinel job, with a harness
+# holding that the sentinel failed open; they are their own repositories now,
+# and eleven packages need no such economy, so the scoping, the sentinel and the harness are gone.
+# Turbo's task cache (`.turbo`) helps a rerun of the same pull request. With no runs on main there is
+# no shared cache, so a pull request's first run builds cold, which still costs less than a run per merge.
+#
+# Releasing is deliberately NOT here: merging to main ships nothing. A release is the Release workflow,
+# run by hand on main (release.yml). A PR that changes something published also runs the install
+# check (install-check.yml), which proves the packages as a consumer installs them.
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+# A newer push to a ready PR cancels the older run. A ready_for_review event can arrive twice, once
+# still marked draft; a draft run does nothing and must not cancel the real one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  validate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ${{ fromJSON(vars.BEACON_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Turbo cache policy: only the push-to-main run SAVES (it's the one every later PR restores
+      # from); see the action's header.
+      - uses: ./.github/actions/setup-workspace
+        with:
+          turbo-cache: ${{ github.event_name == 'pull_request' && 'restore' || 'save' }}
+          npm-token: ${{ secrets.NPM_TOKEN }}
+
+      # package.json > scripts.gate, the one list: every suite holds a coverage floor, the tier
+      # gate covers a game it does not name, a document's examples are the files it shows, a core
+      # package's public API changes only on purpose, then build + typecheck, the suites with
+      # coverage, lint and the format check.
+      - run: pnpm run gate

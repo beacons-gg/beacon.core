@@ -1,0 +1,67 @@
+{
+  "type": "pot",
+  "ops": {
+    "list": {
+      "role": "public"
+    },
+    "contribute": {
+      "role": "public",
+      "phase": "open"
+    },
+    "claim": {
+      "role": "contributor",
+      "phase": "settled"
+    }
+  },
+  "lifecycle": {
+    "phases": ["open", "settled"],
+    "transitions": {
+      "settled": "settleAt"
+    }
+  },
+  "derived": {
+    "settleAt": {
+      "max": [
+        {
+          "+": [
+            {
+              "var": "placedAt"
+            },
+            600
+          ]
+        },
+        {
+          "-": [
+            {
+              "+": [
+                {
+                  "var": "placedAt"
+                },
+                3600
+              ]
+            },
+            {
+              "*": [
+                {
+                  "sum": [
+                    {
+                      "var": "contents"
+                    },
+                    "weight"
+                  ]
+                },
+                60
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "accept": {
+    "class": ["stone"],
+    "capacity": 10
+  },
+  "onEmpty": "close",
+  "claimTtl": "7d"
+}

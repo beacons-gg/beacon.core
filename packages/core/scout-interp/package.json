@@ -1,0 +1,47 @@
+{
+  "name": "@beaconsgg/scout-interp",
+  "version": "1.1.2",
+  "description": "[C] client-bound (RN-safe): great-circle interpolation of a moving scout's position, bearing and arrival time.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beacons-gg/beacon.core.git",
+    "directory": "packages/core/scout-interp"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@beaconsgg/protocol-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "vitest": "catalog:",
+    "@beaconsgg/tsconfig": "workspace:*",
+    "@beaconsgg/vitest-config": "workspace:*"
+  }
+}

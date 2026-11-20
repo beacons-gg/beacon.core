@@ -1,0 +1,62 @@
+{
+  "name": "@beaconsgg/identity",
+  "version": "1.1.2",
+  "description": "[C] client-bound (RN-safe): Ed25519 keys, did:key, account+device authorization, signOp/verifyOp.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beacons-gg/beacon.core.git",
+    "directory": "packages/core/identity"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/signing-conformance.d.ts",
+      "default": "./dist/signing-conformance.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "conformance": [
+        "./dist/signing-conformance.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@beaconsgg/protocol-types": "workspace:*",
+    "@noble/ed25519": "catalog:",
+    "@noble/hashes": "catalog:",
+    "@scure/base": "catalog:",
+    "@scure/bip39": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "vitest": "catalog:",
+    "@beaconsgg/tsconfig": "workspace:*",
+    "@beaconsgg/vitest-config": "workspace:*"
+  }
+}
