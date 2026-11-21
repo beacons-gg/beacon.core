@@ -5,27 +5,28 @@
 # Merging to main validates and ships nothing (ci.yml). A release is this one run, in order:
 #
 #   1. Version.  Every published package (the seven core packages and the tooling presets, one
-#                version for all: doc/core-compatibility.md §3) is set to the version given. A
-#                breaking change is a major, an addition a minor and a fix a patch.
+#                version for all: doc/core-compatibility.md §3) is set to the version given, in the
+#                run's own checkout. Nothing is committed: main's manifests name 0.0.0, and the
+#                tags are the record of what was released. A breaking change is a major, an
+#                addition a minor and a fix a patch.
 #   2. Gate.     The whole gate on the tree about to ship.
-#   3. Record.   The commit "Release <version>" is pushed to main. If main moved since the run
-#                started, the push is refused and nothing has shipped yet: run it again.
-#   4. Publish.  Builds the published packages and puts up each one the registry lacks, then points
-#                `latest` at what main names. A prerelease (2.0.0-rc.1) goes up under the `next`
+#   3. Publish.  Builds the published packages and puts up each one the registry lacks, then points
+#                `latest` at the version. A prerelease (2.0.0-rc.1) goes up under the `next`
 #                tag instead, and `latest` stays where it was. A package's very first publish is
 #                also its `latest` on the registry, whatever the tag, until a release replaces it.
-#   5. List.     The tag `v<version>` at that commit and a GitHub Release on it, with notes
+#   4. List.     The tag `v<version>` at the released commit and a GitHub Release on it, with notes
 #                generated from the pull requests merged since the previous release.
 #
 # Every step is safe to repeat: a re-run with the same version finishes what is missing and changes
-# nothing that is already there (the version is then already main's, so step 1 moves nothing).
+# nothing that is already there (the registry has what went up, so step 3 skips it). The version has
+# to be above the highest tag, and a release that did not finish has no tag yet.
 #
-# Needs the NPM_TOKEN repository secret (the registry). The workflow's own token pushes
-# the commit, the tag and the release; its push starts no CI run, which is right: the gate ran
-# here on that exact tree. The tag is created by git push at the head of main, where the workflow
-# token is allowed to create it (a ref at an older commit whose workflow files differ from main's
-# is refused). The order when a change spans repositories (the server, the console, the game) is
-# doc/release-runbook.md.
+# Needs the NPM_TOKEN repository secret (the registry). The workflow's own token pushes the tag and
+# creates the release. The tag is created at the commit the run was dispatched on, main's head then,
+# and the workflow token may not create a ref at a commit whose workflow files differ from main's
+# head: a run that outlives a merge touching .github/workflows fails at step 4. "Re-run failed jobs"
+# keeps the old commit and fails the same way; dispatch a new run instead. The order when a change
+# spans repositories (the server, the console, the game) is doc/release-runbook.md.
 name: Release
 
 on:
@@ -43,7 +44,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # the version commit, the tag and the GitHub Release
+  contents: write # the tag and the GitHub Release
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
@@ -76,17 +77,20 @@ jobs:
           npm-token: ${{ secrets.NPM_TOKEN }}
           npm-token-required: "true"
 
-      # The input is user-typed text: checked for shape before anything reads it. It has to be
-      # main's version (a re-run) or a later one; a tag that exists means the release is done.
+      # The input is user-typed text: checked for shape before anything reads it. The tags are the
+      # record of what was released, so the version has to be above the highest `v<version>` tag. A
+      # re-run of a release that did not finish passes, since its tag is created last.
       - name: Check the version
         run: |
           # A prerelease is semver's: dot-separated identifiers, none empty, and a numeric one has no
-          # leading zero. pnpm refuses anything else at publish, after the version commit is on main.
+          # leading zero. pnpm refuses anything else at publish.
           id='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
           if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?$ ]]; then
             echo "::error::version '$VERSION' is not of the form 1.0.1 or 2.0.0-rc.1"; exit 1
           fi
-          current=$(jq -r .version packages/core/protocol-types/package.json)
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is released already (the tag exists); a re-run is for a release that did not finish, which has no tag yet"; exit 1
+          fi
           # Semver order, where a release ranks above its own candidates (2.0.0 > 2.0.0-rc.2).
           node -e '
             const parse = (v) => { const [core, pre] = v.split(/-(.*)/s); return [core.split(".").map(Number), pre ? pre.split(".") : []]; };
@@ -102,12 +106,12 @@ jobs:
               }
               return 0;
             };
-            if (cmp(process.argv[1], process.argv[2]) < 0) { console.log("::error::version " + process.argv[1] + " is below the version main names, " + process.argv[2]); process.exit(1); }
-          ' "$VERSION" "$current"
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::error::v$VERSION is released already (the tag exists); a re-run is for a release that did not finish, which has no tag yet"; exit 1
-          fi
-          echo "releasing $VERSION (main names $current)"
+            const [version, ...tags] = process.argv.slice(1);
+            const released = tags.filter((t) => /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(t)).map((t) => t.slice(1)).sort(cmp);
+            const highest = released.at(-1);
+            if (highest && cmp(version, highest) <= 0) { console.log("::error::version " + version + " is not above the highest release, " + highest); process.exit(1); }
+            console.log("releasing " + version + (highest ? " (the highest release is " + highest + ")" : ""));
+          ' "$VERSION" $(git tag -l 'v*')
 
       - name: Set the version on everything published
         run: |
@@ -120,20 +124,6 @@ jobs:
 
       - name: The whole gate, on the tree about to ship
         run: pnpm run gate
-
-      # The record goes to main before anything is published, so that a publish that fails halfway
-      # leaves main naming a version the registry lacks, which a re-run puts up: never the other
-      # way round.
-      - name: Push the version commit to main
-        run: |
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "main names $VERSION already: nothing to commit (a re-run)"; exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Release $VERSION"
-          git push origin HEAD:main
 
       # `files` is dist (plus a preset's own files), so what is published is built first; its
       # dependents are not. Two presets are plain files and have no build.
@@ -150,9 +140,8 @@ jobs:
           pnpm -r publish $PUBLISHED --no-git-checks --tag "$tag"
 
       # Every public manifest names a version the registry has, from before this run or from the
-      # step above, so this is idempotent, and it ends any state where `latest` points at an older
-      # build than main names.
-      - name: Point latest at what main names
+      # step above, so this is idempotent.
+      - name: Point latest at this release
         if: ${{ !contains(env.VERSION, '-') }}
         run: |
           specs=$(pnpm -r ls --depth -1 --json $PUBLISHED \

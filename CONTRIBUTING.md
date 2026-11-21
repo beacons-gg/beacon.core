@@ -133,7 +133,8 @@ never a finding.
   beacon.server and tests what this repository publishes.
 - **A release is one run** of [`.github/workflows/release.yml`](.github/workflows/release.yml) on
   `main` with a version (`gh workflow run release.yml -f version=0.3.1`). The run sets the version
-  and runs the gate. The run then pushes the version commit and publishes what the registry lacks.
+  in its own checkout, runs the gate and publishes what the registry lacks. The run commits nothing,
+  so the manifests on `main` name `0.0.0`.
   Last the run tags `v<version>` and creates a GitHub Release. The release notes are the titles of
   the PRs merged since the previous release, so write a PR title as a sentence a consumer can read.
   The rules and the steps are in [`doc/core-compatibility.md`](doc/core-compatibility.md) §7.

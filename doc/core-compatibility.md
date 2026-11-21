@@ -318,16 +318,17 @@ notes.
 - **A release is one run of `.github/workflows/release.yml` on `main`** with a version
   (`gh workflow run release.yml -f version=1.0.1`, or the Actions tab). The run takes these steps in
   order:
-  1. sets that version on every published manifest;
+  1. sets that version on every published manifest, in the run's own checkout;
   2. runs the whole gate on that tree;
-  3. pushes the commit `Release <version>` to `main`;
-  4. builds and runs `pnpm -r publish`, which puts up each package the registry lacks and skips the
+  3. builds and runs `pnpm -r publish`, which puts up each package the registry lacks and skips the
      rest. A pre-release such as `2.0.0-rc.1` goes up under the `next` tag and never moves `latest`;
-  5. for a stable version, points `latest` at that version;
-  6. tags `v<version>` and creates the GitHub Release on the tag, with notes generated from the pull
+  4. for a stable version, points `latest` at that version;
+  5. tags `v<version>` and creates the GitHub Release on the tag, with notes generated from the pull
      requests merged since the previous release.
 
-  Every step is safe to repeat: a run that did not finish is run again with the same version.
+  The run commits nothing, so the manifests on `main` name `0.0.0`. The `v<version>` tags record what
+  was released, and a new version has to be above the highest one. Every step is safe to repeat: a
+  run that did not finish is run again with the same version.
   Internal ranges stay `workspace:*` in the repository. On the way out `pnpm publish` rewrites them
   and the `catalog:` ranges to the resolved versions.
 

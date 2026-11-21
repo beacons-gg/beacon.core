@@ -1,6 +1,6 @@
 {
   "name": "@beaconsgg/client-sdk",
-  "version": "1.1.2",
+  "version": "0.0.0",
   "description": "[C] client-bound (RN-safe): the Beacon client SDK. Signed REST, platform reads, the live channel, descriptor verification, the approved-server registry and key custody, with fetch, the clock, the socket and the key store injected.",
   "license": "Apache-2.0",
   "engines": {
