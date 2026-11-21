@@ -150,13 +150,16 @@ jobs:
           echo "canary $sha: $names"
 
       # One version for everything published: the seven, and the presets, which a release versions
-      # on their own. A canary is one build of this commit, not a release. Both places that name
-      # the real registry for a publish name the throwaway one instead: the `@beaconsgg` scope
-      # mapping in .npmrc, which decides where a scoped package goes (`--registry` does not), and
-      # each manifest's publishConfig, so that neither is left pointing at a real registry.
+      # on their own. A canary is one build of this commit, not a release. Both places that decide
+      # where a publish goes name the throwaway registry: the `@beaconsgg` scope mapping in .npmrc,
+      # which decides where a scoped package goes (`--registry` does not), and each manifest's
+      # publishConfig, so that neither can reach a real registry. The committed .npmrc maps no
+      # scope (the packages are on the public registry), so the mapping is added here, in place of
+      # any that is there.
       - name: Version what is published, for the throwaway registry
         run: |
-          sed -i "s#^@beaconsgg:registry=.*#@beaconsgg:registry=$CANARY_REGISTRY#" .npmrc
+          sed -i '/^@beaconsgg:registry=/d' .npmrc
+          echo "@beaconsgg:registry=$CANARY_REGISTRY" >> .npmrc
           grep -qxF "@beaconsgg:registry=$CANARY_REGISTRY" .npmrc
           for dir in $(jq -r '.[].path' "$RUNNER_TEMP/published.json"); do
             m="$dir/package.json"
