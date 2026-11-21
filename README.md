@@ -1,5 +1,9 @@
 # Beacon: the published packages
 
+Beacon is a network of servers for games played at real places. [beacons.gg](https://beacons.gg)
+explains how Beacon works, and [the docs](https://beacons.gg/docs) take a game from the
+[quickstart](https://beacons.gg/docs/quickstart) to the [SDK reference](https://beacons.gg/docs/sdk-reference).
+
 This repository holds the **Beacon platform's shared code** as the `@beaconsgg/*` packages:
 
 - the single definition of the wire and its primitives;
