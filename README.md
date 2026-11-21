@@ -1,101 +1,129 @@
-# Beacon: the published packages
+# Beacon Core
 
-Beacon is a network of servers for games played at real places. [beacons.gg](https://beacons.gg)
-explains how Beacon works, and [the docs](https://beacons.gg/docs) take a game from the
-[quickstart](https://beacons.gg/docs/quickstart) to the [SDK reference](https://beacons.gg/docs/sdk-reference).
+Beacon Core contains the shared packages used by the Beacon platform. These packages define the protocol between games and servers and provide the client SDK. The packages also supply common utilities and development tooling.
 
-This repository holds the **Beacon platform's shared code** as the `@beaconsgg/*` packages:
+The packages are published under the `@beaconsgg/*` npm scope.
 
-- the single definition of the wire and its primitives;
-- the client SDK that every game talks to a server with;
-- the build, test, lint and format presets that Beacon's own repositories use.
+[beacons.gg](https://beacons.gg) explains how Beacon works, and the [docs](https://beacons.gg/docs) cover building a game and running a server.
 
-Everything here is published as a package, and the rest of Beacon is built against what is
-published:
+If you're building a game with Beacon, start with the [game development quickstart](https://beacons.gg/docs/quickstart) and the [SDK reference](https://beacons.gg/docs/sdk-reference). A game starts with `@beaconsgg/client-sdk`. The quickstart names the other packages a game installs beside the SDK.
 
-| Repository                                                   | What it is                                                         |
-| ------------------------------------------------------------ | ------------------------------------------------------------------ |
-| this one                                                     | the seven core packages and the four tooling presets               |
-| [beacon.server](https://github.com/beacons-gg/beacon.server) | the server and its server-side packages, Atlas and the skew matrix |
-| [beacon.admin](https://github.com/beacons-gg/beacon.admin)   | the operator console and its plugin contract                       |
+## Packages
 
-A game is developed in a repository of its own, outside the platform's repositories.
+This repository contains three groups of packages.
 
-To build a game, start with [`doc/game-author.md`](doc/game-author.md). The page is the platform
-contract: what a Beacon server guarantees and what a game supplies.
-[`doc/core-compatibility.md`](doc/core-compatibility.md) gives what these packages promise across
-versions and how they are published. The specs the code cites are in [`doc/spec/`](doc/spec/README.md).
+### Core
 
-## Layout
+Shared by Beacon servers and games. These packages define the protocol and common primitives used across the network.
 
-```
-packages/                 # tiered by who depends on them. [C] = client-bound (RN-safe)
-  core/                   # [C] shared by the server AND every game (wire contract + primitives)
-    protocol-types/       #     zod schemas + types: ids, ops, rooms, policy, discovery, scouts, profile, items
-    identity/             #     Ed25519, did:key, account+device auth, multi-device profile + revocation, JCS
-    jsonlogic-profile/    #     whitelisted JSONLogic + 4 aggregators + integer guard + conformance vectors
-    geo/                  #     geohash coverage + cell queries (antimeridian-safe view cells)
-    scout-interp/         #     great-circle movement interpolation (moving scouts)
-  client/                 # [C] the generic client SDK (games and the console, not the server)
-    client-sdk/           #     signed REST + reads + live channel + server registry + key custody
-    event-bus/            #     tiny typed pub/sub kernel (TypedEventBus)
-  tooling/                #     presets: tsconfig, prettier-config, vitest-config, eslint-config
-doc/                      # the game-author contract, the compatibility policy, the specs, the release guide
-scripts/                  # the gate's repo-wide checks, and the canary's consumer
-```
+| Package                        | Description                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `@beaconsgg/protocol-types`    | Protocol schemas and types for identities, operations, rooms, policies, discovery, scouts, profiles, and items |
+| `@beaconsgg/identity`          | Account and device identities, cryptographic signing, verification, and device management                      |
+| `@beaconsgg/jsonlogic-profile` | Restricted JSONLogic evaluation and policy-related utilities                                                   |
+| `@beaconsgg/geo`               | Geohash coverage and geographic cell queries                                                                   |
+| `@beaconsgg/scout-interp`      | Geographic interpolation for moving scouts                                                                     |
 
-The seven packages under `core/` and `client/` move as one version. The rules for each tier are in
-[`packages/README.md`](packages/README.md). Tiers depend downward only. A client-bound package stays
-safe for React Native: pure TypeScript with no Node built-ins. ESLint enforces both rules.
+### Client
 
-## Working here
+Packages used by game clients and other applications that communicate with Beacon servers.
 
-You need **Node 22** (`.nvmrc`, so run `nvm use`) and **pnpm 10.33**. Run `corepack enable` and
-corepack picks pnpm up from `packageManager`. An install needs no registry token, because every
-`@beaconsgg/*` package is a workspace member.
+| Package                 | Description                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `@beaconsgg/client-sdk` | Client integration for signed requests, server discovery, platform reads, live updates, and identity/key management |
+| `@beaconsgg/event-bus`  | Small typed publish/subscribe event bus                                                                             |
 
-```bash
+The client packages are framework-agnostic and designed to work in both browsers and React Native environments.
+
+### Tooling
+
+Shared development configuration used across Beacon repositories.
+
+| Package                      | Description                                        |
+| ---------------------------- | -------------------------------------------------- |
+| `@beaconsgg/tsconfig`        | Shared TypeScript compiler configuration           |
+| `@beaconsgg/prettier-config` | Shared Prettier configuration                      |
+| `@beaconsgg/vitest-config`   | Shared Vitest configuration and coverage utilities |
+| `@beaconsgg/eslint-config`   | Shared ESLint rules and architecture checks        |
+
+## Package architecture
+
+Core defines what games and servers agree on. [beacon.server](https://github.com/beacons-gg/beacon.server) implements the server side of that contract, and a game implements the client side with the SDK.
+
+Packages are organized into tiers based on their dependencies:
+
+- **Core** packages are shared by games and servers.
+- **Client** packages build on Core and provide client-side functionality.
+- **Server** packages are maintained in [beacon.server](https://github.com/beacons-gg/beacon.server).
+- **Admin** packages are maintained in [beacon.admin](https://github.com/beacons-gg/beacon.admin).
+- **Tooling** packages provide shared development configuration.
+
+Dependencies flow downward between tiers. Core packages cannot depend on client, server, admin, or game-specific code.
+
+Client-bound packages must remain safe for React Native, using framework-agnostic TypeScript without Node.js built-ins. These boundaries are enforced by the shared lint configuration.
+
+See [`packages/README.md`](packages/README.md) for the complete package architecture and dependency rules.
+
+## Compatibility and versioning
+
+The seven Core and Client packages are published together under a shared version. The four tooling packages use the same version.
+
+The public API and client/server compatibility guarantees are documented in [`doc/core-compatibility.md`](doc/core-compatibility.md).
+
+For game developers, the [game author guide](doc/game-author.md) describes the contract between a game and a Beacon server. The guide covers what the platform provides and what the game is responsible for.
+
+Technical specifications are maintained in [`doc/spec/`](doc/spec/README.md).
+
+## Repository structure
+
+| Path                | Description                                                                   |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `packages/core/`    | Shared protocol and platform packages                                         |
+| `packages/client/`  | Client SDK and event bus                                                      |
+| `packages/tooling/` | Shared development presets                                                    |
+| `doc/`              | Game development contract, compatibility policy, and technical specifications |
+| `scripts/`          | Repository validation and package checks                                      |
+
+## Development
+
+### Requirements
+
+- Node.js 22
+- pnpm 10.33
+
+The repository uses `.nvmrc` for the Node.js version and `packageManager` in `package.json` for pnpm.
+
+### Setup
+
+```sh
+nvm use
+corepack enable
 pnpm install
-pnpm run gate       # every quality gate in one command (see CONTRIBUTING.md)
-pnpm build          # turbo: tsc -> dist across packages
-pnpm typecheck      # turbo: tsc --noEmit across packages
-pnpm test           # turbo: vitest across packages
-pnpm test:coverage  # the same suites, each held to its coverage floor
-pnpm lint           # eslint, including the RN-safety and tier gates
-pnpm format:check   # prettier --check
 ```
 
-## CI and releases
+### Common commands
 
-Three workflows run here:
+| Command             | Description                   |
+| ------------------- | ----------------------------- |
+| `pnpm build`        | Build all packages            |
+| `pnpm typecheck`    | Run TypeScript checks         |
+| `pnpm test`         | Run package tests             |
+| `pnpm lint`         | Run ESLint checks             |
+| `pnpm run gate`     | Run the complete quality gate |
+| `pnpm format:check` | Check formatting              |
 
-- **CI** (`ci.yml`) runs the whole gate on every PR and on every push to `main`.
-- **Install check** (`install-check.yml`) runs on a PR that changes something published. A
-  throwaway build goes to a throwaway registry that lives only inside the CI job, and is installed
-  into a project outside the workspace. The project uses the build as a consumer would and then runs
-  the five client flows against the server as released. No canary reaches a real registry. The
-  workflow's `Install check summary` job runs on every PR and is the required check. The summary
-  passes when the install jobs passed or had nothing published to check.
-- **Release** (`release.yml`) runs by hand on `main` with a version. One run sets every published
-  package to the version in its own checkout, runs the gate and publishes what the registry lacks.
-  The run commits nothing, so the manifests on `main` name `0.0.0`. Last the run tags `v<version>` and creates a GitHub Release with notes
-  from the merged PRs. Merging publishes nothing. Only a release run publishes.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development conventions, testing requirements, and contribution guidelines.
 
 ## Contributing
 
-The project doesn't accept pull requests from outside contributors yet. Issues are welcome, and a
-vulnerability goes through GitHub's private vulnerability reporting ([`SECURITY.md`](SECURITY.md)).
-[`CONTRIBUTING.md`](CONTRIBUTING.md) has the details, the gates and the conventions. The order of the
-releases when a change spans repositories is in [`doc/release-runbook.md`](doc/release-runbook.md).
+External pull requests are not currently accepted, but issues and bug reports are welcome.
 
-## History
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details and [`SECURITY.md`](SECURITY.md) for private vulnerability reporting.
 
-These packages were developed inside an earlier Beacon monorepo until October 2026. The server, the console
-and the first game lived in the same monorepo. Each of those moved to its own repository, and the packages
-moved here with their history and their version tags. An issue or pull request number in an older
-commit message refers to that earlier repository, which is archived and was never public.
+For release procedures and cross-repository release ordering, see [`doc/release-runbook.md`](doc/release-runbook.md).
 
 ## License
 
-The packages are licensed under the Apache License 2.0 ([`LICENSE`](LICENSE)). NorthCtrl LLC holds
-the copyright, as [`NOTICE`](NOTICE) states.
+The packages are licensed under the Apache License 2.0. See [`LICENSE`](LICENSE).
+
+NorthCtrl LLC holds the copyright, as documented in [`NOTICE`](NOTICE).

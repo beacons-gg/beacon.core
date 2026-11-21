@@ -111,7 +111,7 @@ never a finding.
 
 ## CI and releases
 
-- **Every PR and every push to `main` runs the whole gate**
+- **Every pull request marked ready runs the whole gate**
   ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). CI has no scoping to affected packages
   and no optional job. Eleven packages need neither, and the turbo cache keeps a run cheap.
 - **Merging to `main` validates and publishes nothing.** The Release workflow below publishes. The
