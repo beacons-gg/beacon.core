@@ -1,6 +1,6 @@
 {
   "name": "@beaconsgg/eslint-config",
-  "version": "1.1.2",
+  "version": "0.0.0",
   "description": "The ESLint config every Beacon repo lints with: the base rules, the RN-safety gate, the tier gate, the check that a game app's own config carries its gate, the check for references a public reader cannot open, and the writing style guide with its check.",
   "license": "Apache-2.0",
   "engines": {

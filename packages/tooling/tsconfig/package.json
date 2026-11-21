@@ -1,6 +1,6 @@
 {
   "name": "@beaconsgg/tsconfig",
-  "version": "1.1.2",
+  "version": "0.0.0",
   "description": "The compiler options every Beacon workspace builds with: strictness, target and module format.",
   "license": "Apache-2.0",
   "engines": {

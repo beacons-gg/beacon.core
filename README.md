@@ -77,8 +77,8 @@ Three workflows run here:
   workflow's `Install check summary` job runs on every PR and is the required check. The summary
   passes when the install jobs passed or had nothing published to check.
 - **Release** (`release.yml`) runs by hand on `main` with a version. One run sets every published
-  package to the version and runs the gate. The run then pushes the version commit and publishes
-  what the registry lacks. Last the run tags `v<version>` and creates a GitHub Release with notes
+  package to the version in its own checkout, runs the gate and publishes what the registry lacks.
+  The run commits nothing, so the manifests on `main` name `0.0.0`. Last the run tags `v<version>` and creates a GitHub Release with notes
   from the merged PRs. Merging publishes nothing. Only a release run publishes.
 
 ## Contributing

@@ -1,6 +1,6 @@
 {
   "name": "@beaconsgg/scout-interp",
-  "version": "1.1.2",
+  "version": "0.0.0",
   "description": "[C] client-bound (RN-safe): great-circle interpolation of a moving scout's position, bearing and arrival time.",
   "license": "Apache-2.0",
   "engines": {
