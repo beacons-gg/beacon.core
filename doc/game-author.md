@@ -213,6 +213,15 @@ a peer's item (section 7).
 
 `birth` may not use the keys `unique` or `minter`.
 
+**A room holds an item once.** From beacon-server 1.1.3 on, `add` and `contribute` answer `invalid`
+for an item whose `unique` the room already holds. A contributor who resends their own contribution
+under a fresh nonce gets a success that changes nothing, so your client can drop the item. An `add`
+resent under a fresh nonce answers `invalid`, so retry with the same nonce (section 5.1). Servers
+keep no index of items across rooms. The same item can therefore sit in two rooms on one server or
+in rooms on two servers. A player can also mint a new item with the same `match` under a fresh
+`unique`. If your game needs scarce items, mint them with a key your game controls (section 4.2) and
+enforce scarcity in your client (section 7).
+
 ### 4.2 Signing
 
 Provenance is an Ed25519 signature over canonical JSON (JCS) of an object's birth fields with the
@@ -546,7 +555,8 @@ Scouts arrive in discovery's `scouts` list and as live `scout` and `scoutGone` m
 - **Your scout config**, if you have scouts. That means its schema and a parser that tells your
   scouts from other games' scouts. The config's caps apply only in your client (section 6).
 - **Every rule the server does not enforce**: how close a player must be to place or open a room,
-  what a player may carry and how stats grow. These are your client's rules.
+  what a player may carry and how stats grow. These are your client's rules. So is whether an item
+  is one of a kind.
 - **Which rooms are yours.** Ask for your own game's rooms (section 5.6) and check each room before
   you show it. Look for a type you place, a policy your builders produce and items your validator
   accepts. The slug narrows the list; it does not prove where a room came from.
